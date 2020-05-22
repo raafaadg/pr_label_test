@@ -1,0 +1,404 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Create the necessary resources for ECO-API
+Parameters:
+  ApiNameParam:
+    Type: String
+    Description: Api Gateway Name
+  EnvSuffix:
+    Type: String
+    Description: Environment
+    Default: dev
+    AllowedValues:
+      - dev
+      - stg
+      - prd
+Resources:
+
+  EntityDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-entities-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+        - AttributeName: country
+          AttributeType: S
+        - AttributeName: document
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: country-document-index
+          KeySchema:
+              - AttributeName: country
+                KeyType: HASH
+              - AttributeName: document
+                KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - behavior_set
+              - integration_id
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  DocumentsDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-documents-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  ApplicationsDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-applications-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: entity_id
+          AttributeType: S
+        - AttributeName: product_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: entity_id
+          KeyType: HASH
+        - AttributeName: product_id
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  WebhooksDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-webhooks-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  ProductsDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-products-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: product_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: product_id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  NotificationsDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-notifications-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  MerchantRecipientsDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-merchant-recipients-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: merchant_id
+          AttributeType: S
+        - AttributeName: recipient_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: merchant_id
+          KeyType: HASH
+        - AttributeName: recipient_id
+          KeyType: RANGE
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+
+  EcoAssetBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: eco-s3-bucket-assets
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: yes
+        BlockPublicPolicy: yes
+        IgnorePublicAcls: yes
+        RestrictPublicBuckets: yes
+
+
+  WebhookSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "eco-webhook-${EnvSuffix}"
+
+  WebhookSNSPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2008-10-17'
+        Statement:
+          - Sid: __default_statement_ID
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+              - SNS:Publish
+              - SNS:RemovePermission
+              - SNS:SetTopicAttributes
+              - SNS:DeleteTopic
+              - SNS:ListSubscriptionsByTopic
+              - SNS:GetTopicAttributes
+              - SNS:Receive
+              - SNS:AddPermission
+              - SNS:Subscribe
+            Resource: !Ref WebhookSNSTopic
+            Condition:
+              StringEquals:
+                AWS:SourceOwner: !Ref 'AWS::AccountId'
+          - Sid: __enduser_account
+            Effect: Allow
+            Principal:
+              AWS:
+                - '123882922663'
+                - arn:aws:iam::123882922663:role/congo-eco-subscriber-codebuild-role
+            Action:
+              - SNS:Subscribe
+              - SNS:Receive
+            Resource: !Ref WebhookSNSTopic
+      Topics:
+        - !Ref WebhookSNSTopic
+
+  EcoSNSParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: !Sub "eco-sns-topic-${EnvSuffix}"
+      Type: String
+      Value: !Ref WebhookSNSTopic
+      Description: "ECO Webhooks SNS topic name."
+
+  ExternalWebhookSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "eco-external-webhook-${EnvSuffix}"
+
+  ExternalWebhookSNSPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      PolicyDocument:
+        Version: '2008-10-17'
+        Statement:
+          - Sid: __default_statement_ID
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+              - SNS:Publish
+              - SNS:RemovePermission
+              - SNS:SetTopicAttributes
+              - SNS:DeleteTopic
+              - SNS:ListSubscriptionsByTopic
+              - SNS:GetTopicAttributes
+              - SNS:Receive
+              - SNS:AddPermission
+              - SNS:Subscribe
+            Resource: !Ref ExternalWebhookSNSTopic
+            Condition:
+              StringEquals:
+                AWS:SourceOwner: !Ref 'AWS::AccountId'
+          - Sid: __enduser_account
+            Effect: Allow
+            Principal:
+              AWS:
+                - '123882922663'
+                - arn:aws:iam::123882922663:role/congo-eco-subscriber-codebuild-role
+            Action:
+              - SNS:Subscribe
+              - SNS:Receive
+            Resource: !Ref ExternalWebhookSNSTopic
+      Topics:
+        - !Ref ExternalWebhookSNSTopic
+
+  EcoExternalSNSParameter:
+    Type: "AWS::SSM::Parameter"
+    Properties:
+      Name: !Sub "eco-external-sns-topic-${EnvSuffix}"
+      Type: String
+      Value: !Ref ExternalWebhookSNSTopic
+      Description: "ECO External Webhooks SNS topic name."
+
+
+  
+  ProviderPassfortDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-provider-passfort-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  NotificationsV2DynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-notifications-v2-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+   
+  LogExternalProvidersDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-log-external-providers-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  AssetsDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-assets-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+          - Key: DDBTableGroupKey-eco
+            Value: eco
+
+  ApplicationRevisionsDynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-application-revisions-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+          - Key: DDBTableGroupKey-eco
+            Value: eco
+
+  WebshieldRequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'eco-webshield-requests-${EnvSuffix}'
+      AttributeDefinitions:
+        - AttributeName: uuid
+          AttributeType: S
+      KeySchema:
+        - AttributeName: uuid
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+      Tags:
+        - Key: DDBTableGroupKey-eco
+          Value: eco
+
+  NotMappedAccountsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: !Sub 'eco-not-mapped-accounts-${EnvSuffix}'
+        AttributeDefinitions:
+          - AttributeName: sf_account_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: sf_account_id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        Tags:
+          - Key: DDBTableGroupKey-eco
+            Value: eco
