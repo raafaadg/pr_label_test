@@ -1,0 +1,10 @@
+# Add 'repo' label to any root file changes
+repo:
+  - ./*
+  
+cloudformation:
+  - ./cloudformation/resource.yml
+
+# Add 'test' label to any change to *.spec.js files within the source dir
+migrations:
+  - ./cloudformation/*
