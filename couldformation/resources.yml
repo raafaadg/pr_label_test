@@ -402,3 +402,20 @@ Resources:
         Tags:
           - Key: DDBTableGroupKey-eco
             Value: eco
+
+  NotMappedAccountsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: !Sub 'eco-not-mapped-accounts-${EnvSuffix}'
+        AttributeDefinitions:
+          - AttributeName: sf_account_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: sf_account_id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+        Tags:
+          - Key: DDBTableGroupKey-eco
+            Value: eco
